@@ -1,4 +1,4 @@
-import type { Novel, PaginatiedResponse } from '@/types';
+import type { Novel, Paginated } from '@/types';
 import { stringifyError } from '@/utils/errors';
 import { Grid } from 'antd';
 import axios from 'axios';
@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 interface SearchParams {
   page?: number;
   search?: string;
+  domain?: string;
 }
 
 export function useNovelList() {
@@ -27,6 +28,11 @@ export function useNovelList() {
     [searchParams]
   );
 
+  const domain = useMemo(
+    () => searchParams.get('domain') || '',
+    [searchParams]
+  );
+
   const currentPage = useMemo(
     () => parseInt(searchParams.get('page') || '1', 10),
     [searchParams]
@@ -41,18 +47,20 @@ export function useNovelList() {
     } else {
       return 24;
     }
-  }, [breakpoint.xl, breakpoint.lg, breakpoint.sm]);
+  }, [breakpoint.xl, breakpoint.lg]);
 
-  const fetchNovels = async (search: string, page: number, limit: number) => {
+  const fetchNovels = async (
+    search: string,
+    domain: string,
+    page: number,
+    limit: number
+  ) => {
     setError(undefined);
     try {
       const offset = (page - 1) * limit;
-      const { data } = await axios.get<PaginatiedResponse<Novel>>(
-        '/api/novels',
-        {
-          params: { search, offset, limit },
-        }
-      );
+      const { data } = await axios.get<Paginated<Novel>>('/api/novels', {
+        params: { search, offset, limit, domain },
+      });
       setTotal(data.total);
       setNovels(data.items);
     } catch (err: any) {
@@ -64,10 +72,10 @@ export function useNovelList() {
 
   useEffect(() => {
     const tid = setTimeout(() => {
-      fetchNovels(search, currentPage, perPage);
+      fetchNovels(search, domain, currentPage, perPage);
     }, 50);
     return () => clearTimeout(tid);
-  }, [search, currentPage, perPage, refreshId]);
+  }, [search, domain, currentPage, perPage, refreshId]);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -88,6 +96,11 @@ export function useNovelList() {
         } else if (typeof updates.search !== 'undefined') {
           next.delete('search');
         }
+        if (updates.domain) {
+          next.set('domain', String(updates.domain));
+        } else if (typeof updates.domain !== 'undefined') {
+          next.delete('domain');
+        }
         return next;
       });
     }, 100);
@@ -97,6 +110,7 @@ export function useNovelList() {
     search,
     perPage,
     currentPage,
+    domain,
     novels,
     total,
     loading,

@@ -6,18 +6,18 @@ from typing import Generator, List, Optional
 
 from PIL import Image
 
+from ...context import ctx
 from ...core.browser import Browser, By
-from ...core.crawler import Crawler
-from ...core.exeptions import FallbackToBrowser, ScraperErrorGroup
+from ...exceptions import FallbackToBrowser, ScraperErrorGroup
 from ...models import Chapter
 from ...models.search_result import SearchResult
+from .._base import CrawlerTemplate
 
 logger = logging.getLogger(__name__)
 
 
-class BasicBrowserTemplate(Crawler):
+class BasicBrowserTemplate(CrawlerTemplate):
     """Attempts to crawl using cloudscraper first, if failed use the browser."""
-    can_use_browser = True
 
     def __init__(
         self,
@@ -51,8 +51,8 @@ class BasicBrowserTemplate(Crawler):
         return self._browser
 
     def init_browser(self):
-        if not self.can_use_browser:
-            raise
+        if not ctx.config.crawler.can_use_browser:
+            raise RuntimeError("Browser is disabled in the configuration")
         if self.using_browser:
             return
         self._max_workers = self.workers
@@ -110,6 +110,7 @@ class BasicBrowserTemplate(Crawler):
 
         # Try to use scraper first (since it is faster)
         try:
+
             def _downloader(chapter: Chapter):
                 chapter.body = ""
                 chapter.images = {}
@@ -118,17 +119,8 @@ class BasicBrowserTemplate(Crawler):
                 chapter.success = bool(chapter.body)
                 return chapter
 
-            futures = [
-                self.executor.submit(_downloader, chapter)
-                for chapter in chapters
-            ]
-            yield from self.resolve_as_generator(
-                futures,
-                desc="Chapters",
-                unit="item",
-                fail_fast=True,
-                signal=signal
-            )
+            futures = [self.executor.submit(_downloader, chapter) for chapter in chapters]
+            yield from self.resolve_as_generator(futures, desc="Chapters", unit="item", fail_fast=True, signal=signal)
             return  # successfully downloaded all the chapters
         except ScraperErrorGroup as e:
             if logger.isEnabledFor(logging.DEBUG):
@@ -148,7 +140,7 @@ class BasicBrowserTemplate(Crawler):
                 self.extract_chapter_images(chapter)
                 chapter.success = True
             except Exception as e:
-                logger.error("Failed to get chapter body: %s", e)
+                logger.error("Failed to get chapter body", exc_info=True)
                 if isinstance(e, KeyboardInterrupt):
                     break
                 if fail_fast:
@@ -175,16 +167,16 @@ class BasicBrowserTemplate(Crawler):
             self.init_browser()
             self._browser.visit(url)
             self.browser.wait("img", By.TAG_NAME)
-            png = self.browser.find("img", By.TAG_NAME).screenshot_as_png
+            img = self.browser.find("img", By.TAG_NAME)
+            assert img, "No img element"
+            png = img.screenshot_as_png
             return Image.open(BytesIO(png))
 
     def search_novel_in_soup(self, query: str) -> Generator[SearchResult, None, None]:
         """Search for novels with `self.scraper` requests"""
         raise FallbackToBrowser()
 
-    def search_novel_in_browser(
-        self, query: str
-    ) -> Generator[SearchResult, None, None]:
+    def search_novel_in_browser(self, query: str) -> Generator[SearchResult, None, None]:
         """Search for novels with `self.browser`"""
         yield from ()
 

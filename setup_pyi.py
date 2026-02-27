@@ -9,9 +9,19 @@ if sys.version_info[:2] < (3, 8):
 
 ROOT = Path(__file__).resolve().parent
 
-AVAILABLE_SITE_PACKAGES = list(ROOT.glob(".venv/**/site-packages"))
+# Determine venv directory: use VIRTUAL_ENV if set, otherwise detect based on OS
+VENV_DIR = os.getenv("VIRTUAL_ENV")
+if VENV_DIR:
+    VENV_DIR = Path(VENV_DIR).relative_to(ROOT).as_posix()
+elif (ROOT / ".venv-win").exists():
+    VENV_DIR = ".venv-win"
+elif (ROOT / ".venv-posix").exists():
+    VENV_DIR = ".venv-posix"
+else:
+    VENV_DIR = ".venv"
+AVAILABLE_SITE_PACKAGES = list(ROOT.glob(f"{VENV_DIR}/**/site-packages"))
 if not AVAILABLE_SITE_PACKAGES:
-    raise RuntimeError("No site-packages found in .venv")
+    raise RuntimeError(f"No site-packages found in {VENV_DIR}")
 
 SITE_PACKAGES = AVAILABLE_SITE_PACKAGES[0]
 DIST_DIR = ROOT / "dist"
@@ -41,7 +51,7 @@ def gather_data_files():
     file_map = {
         ROOT / "lncrawl": "lncrawl",
         ROOT / "sources": "sources",
-        SITE_PACKAGES / "cloudscraper": "cloudscraper",
+        # SITE_PACKAGES / "cloudscraper": "cloudscraper",
         SITE_PACKAGES / "wcwidth" / "version.json": "wcwidth",
         SITE_PACKAGES / "text_unidecode" / "data.bin": "text_unidecode",
     }
@@ -58,6 +68,7 @@ def gather_data_files():
 def gather_hidden_imports():
     hidden = [
         'passlib.handlers.argon2',
+        'selenium.webdriver.chrome.options',
     ]
 
     for py_file in (ROOT / "sources").rglob("*.py"):

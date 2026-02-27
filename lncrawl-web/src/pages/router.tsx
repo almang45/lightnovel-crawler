@@ -1,20 +1,77 @@
-import { MainLayout } from '@/components/Layout';
+/* eslint-disable react-refresh/only-export-components -- Route config exports route arrays, not components */
+import { LoadingState } from '@/components/Loading/LoadingState';
+import { AuthLayout, MainLayout, ReaderLayout } from '@/components/Layout';
+import { lazy, Suspense } from 'react';
 import { Navigate, type RouteObject } from 'react-router-dom';
 
-import { JobDetailsPage } from './JobDetails';
-import { JobListPage } from './JobList';
-import { LoginPage } from './Login';
-import { NovelDetailsPage } from './NovelDetails';
-import { NovelListPage } from './NovelList';
-import { NovelReaderPage } from './NovelReaderPage';
-import { SignupPage } from './Signup';
-import { SupportedSourcesPage } from './SupportedSources';
-import { UserDetailsPage } from './UserDetails';
-import { UserListPage } from './UserList';
+const FeedbackDetailsPage = lazy(() =>
+  import('./FeedbackDetails').then((m) => ({ default: m.FeedbackDetailsPage }))
+);
+const FeedbackListPage = lazy(() =>
+  import('./FeedbackList').then((m) => ({ default: m.FeedbackListPage }))
+);
+const ForgotPasswordPage = lazy(() =>
+  import('./ForgotPassword').then((m) => ({ default: m.ForgotPasswordPage }))
+);
+const JobDetailsPage = lazy(() =>
+  import('./JobDetails').then((m) => ({ default: m.JobDetailsPage }))
+);
+const LibraryDetailsPage = lazy(() =>
+  import('./LibraryDetails').then((m) => ({ default: m.LibraryDetailsPage }))
+);
+const LibraryListPage = lazy(() =>
+  import('./LibraryList').then((m) => ({ default: m.LibraryListPage }))
+);
+const LoginPage = lazy(() =>
+  import('./Login').then((m) => ({ default: m.LoginPage }))
+);
+const MainPage = lazy(() =>
+  import('./HomePage').then((m) => ({ default: m.HomePage }))
+);
+const NovelDetailsPage = lazy(() =>
+  import('./NovelDetails').then((m) => ({ default: m.NovelDetailsPage }))
+);
+const NovelListPage = lazy(() =>
+  import('./NovelList').then((m) => ({ default: m.NovelListPage }))
+);
+const NovelReaderPage = lazy(() =>
+  import('./NovelReader').then((m) => ({ default: m.NovelReaderPage }))
+);
+const ResetPasswordPage = lazy(() =>
+  import('./ResetPassword').then((m) => ({ default: m.ResetPasswordPage }))
+);
+const SettingsPage = lazy(() =>
+  import('./SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
+const SignupPage = lazy(() =>
+  import('./Signup').then((m) => ({ default: m.SignupPage }))
+);
+const SupportedSourcesPage = lazy(() =>
+  import('./SupportedSources').then((m) => ({
+    default: m.SupportedSourcesPage,
+  }))
+);
+const TutorialPage = lazy(() =>
+  import('./Tutorial').then((m) => ({ default: m.TutorialPage }))
+);
+const UserDetailsPage = lazy(() =>
+  import('./UserDetails').then((m) => ({ default: m.UserDetailsPage }))
+);
+const UserListPage = lazy(() =>
+  import('./UserList').then((m) => ({ default: m.UserListPage }))
+);
+const UserProfilePage = lazy(() =>
+  import('./UserProfile').then((m) => ({ default: m.UserProfilePage }))
+);
+
+const withSuspense = (node: React.ReactNode) => (
+  <Suspense fallback={<LoadingState />}>{node}</Suspense>
+);
 
 export const AUTH_ROUTES: RouteObject[] = [
   {
     path: '/',
+    element: <AuthLayout />,
     children: [
       {
         path: '',
@@ -22,11 +79,19 @@ export const AUTH_ROUTES: RouteObject[] = [
       },
       {
         path: '/login',
-        element: <LoginPage />,
+        element: withSuspense(<LoginPage />),
       },
       {
         path: '/signup',
-        element: <SignupPage />,
+        element: withSuspense(<SignupPage />),
+      },
+      {
+        path: '/forgot-password',
+        element: withSuspense(<ForgotPasswordPage />),
+      },
+      {
+        path: '/reset-password',
+        element: withSuspense(<ResetPasswordPage />),
       },
     ],
   },
@@ -39,32 +104,66 @@ export const USER_ROUTES: RouteObject[] = [
     children: [
       {
         path: '',
-        element: <JobListPage />,
+        element: withSuspense(<MainPage />),
+      },
+      {
+        path: 'profile',
+        element: withSuspense(<UserProfilePage />),
       },
       {
         path: 'job/:id',
-        element: <JobDetailsPage />,
+        element: withSuspense(<JobDetailsPage />),
       },
       {
         path: 'novels',
-        element: <NovelListPage />,
+        element: withSuspense(<NovelListPage />),
+      },
+      {
+        path: 'libraries',
+        element: withSuspense(<LibraryListPage />),
+      },
+      {
+        path: 'library/:id',
+        element: withSuspense(<LibraryDetailsPage />),
       },
       {
         path: 'novel/:id',
-        element: <NovelDetailsPage />,
+        element: withSuspense(<NovelDetailsPage />),
       },
       {
-        path: 'novel/:id/chapter/:hash',
-        element: <NovelReaderPage />,
+        path: 'feedbacks',
+        element: withSuspense(<FeedbackListPage />),
+      },
+      {
+        path: 'feedback/:id',
+        element: withSuspense(<FeedbackDetailsPage />),
       },
       {
         path: 'meta',
         children: [
           {
             path: 'sources',
-            element: <SupportedSourcesPage />,
+            element: withSuspense(<SupportedSourcesPage />),
           },
         ],
+      },
+      {
+        path: 'settings',
+        element: withSuspense(<SettingsPage />),
+      },
+      {
+        path: 'tutorial',
+        element: withSuspense(<TutorialPage />),
+      },
+    ],
+  },
+  {
+    path: 'read',
+    element: <ReaderLayout />,
+    children: [
+      {
+        path: ':id',
+        element: withSuspense(<NovelReaderPage />),
       },
     ],
   },
@@ -78,11 +177,11 @@ export const ADMIN_ROUTES: RouteObject[] = [
     children: [
       {
         path: 'users',
-        element: <UserListPage />,
+        element: withSuspense(<UserListPage />),
       },
       {
         path: 'user/:id',
-        element: <UserDetailsPage />,
+        element: withSuspense(<UserDetailsPage />),
       },
     ],
   },

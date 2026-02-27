@@ -1,4 +1,4 @@
-import type { AuthLoginResponse, User } from '@/types';
+import type { LoginResponse, NotificationItem, User } from '@/types';
 import { UserRole } from '@/types/enums';
 import { parseJwt } from '@/utils/jwt';
 import type { PayloadAction } from '@reduxjs/toolkit';
@@ -12,18 +12,21 @@ import type { RootState } from '.';
 // Initial State
 //
 
-export interface AuthState {
-  user: User | null;
-  token: string | null;
+interface UserAuth {
+  user: User;
+  token: string;
   tokenExpiresAt: number;
   emailVerified: boolean;
 }
 
+export interface AuthState {
+  auth: UserAuth | null;
+  availableAuths: Record<string, UserAuth>;
+}
+
 const buildInitialState = (): AuthState => ({
-  user: null,
-  token: null,
-  tokenExpiresAt: 0,
-  emailVerified: true,
+  auth: null,
+  availableAuths: {},
 });
 
 //
@@ -33,21 +36,54 @@ export const AuthSlice = createSlice({
   name: 'auth',
   initialState: buildInitialState(),
   reducers: {
-    setAuth(state, action: PayloadAction<AuthLoginResponse>) {
-      state.user = action.payload.user;
-      state.token = action.payload.token;
-      state.emailVerified = action.payload.is_verified;
-      state.tokenExpiresAt = 1000 * parseJwt(state.token).exp;
-      axios.defaults.headers.common.Authorization = `Bearer ${state.token}`;
+    login(state, action: PayloadAction<LoginResponse>) {
+      const { user, token, is_verified: emailVerified } = action.payload;
+      const tokenExpiresAt = 1000 * parseJwt(token)!.exp;
+      state.auth = { user, token, emailVerified, tokenExpiresAt };
+      state.availableAuths[state.auth.user.id] = state.auth;
+      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+      for (const [key, val] of Object.entries(state.availableAuths)) {
+        if (val.tokenExpiresAt <= Date.now()) {
+          delete state.availableAuths[key];
+        }
+      }
     },
-    clearAuth(state) {
-      state.user = null;
-      state.token = null;
-      state.tokenExpiresAt = 0;
+    logout(state) {
+      state.auth = null;
       axios.defaults.headers.common.Authorization = undefined;
     },
+    switchUser(state, action: PayloadAction<string>) {
+      state.auth = state.availableAuths[action.payload];
+      axios.defaults.headers.common.Authorization = `Bearer ${state.auth.token}`;
+    },
+    removeUserHistory(state, action: PayloadAction<string>) {
+      delete state.availableAuths[action.payload];
+    },
     setEmailVerified(state) {
-      state.emailVerified = true;
+      if (!state.auth) return;
+      state.auth.emailVerified = true;
+      state.availableAuths[state.auth.user.id].emailVerified = true;
+    },
+    setUser(state, action: PayloadAction<User>) {
+      const user = action.payload;
+      if (state.auth?.user.id === user.id) {
+        state.auth.user = user;
+      }
+      if (state.availableAuths[user.id]) {
+        state.availableAuths[user.id].user = user;
+      }
+    },
+    setEmailAlerts(
+      state,
+      action: PayloadAction<Record<NotificationItem, boolean>>
+    ) {
+      if (!state.auth) return;
+      state.auth.user.extra ||= {};
+      state.auth.user.extra.email_alerts = {
+        ...state.auth.user.extra.email_alerts,
+        ...action.payload,
+      };
+      state.availableAuths[state.auth.user.id].user = state.auth.user;
     },
   },
 });
@@ -55,27 +91,38 @@ export const AuthSlice = createSlice({
 //
 // Actions & Selectors
 //
-const selectAuth = (state: RootState) => state.auth;
+const selectAuthState = (state: RootState) => state.auth;
+const selectAuth = createSelector(selectAuthState, (state) => state.auth);
 const selectLoggedIn = createSelector(
-  selectAuth, //
-  (auth) => auth.token && auth.tokenExpiresAt > Date.now()
+  selectAuth,
+  (auth) => auth?.token && auth.tokenExpiresAt > Date.now()
 );
-const selectUser = createSelector(
-  selectAuth, //
-  (auth) => auth.user
-);
+const selectUser = createSelector(selectAuth, (auth) => auth?.user);
 const selectIsAdmin = createSelector(
-  selectUser, //
+  selectUser,
   (user) => user?.role === UserRole.ADMIN
 );
+const selectToken = createSelector(selectAuth, (auth) => auth?.token);
 const selectAuthorization = createSelector(
   selectAuth,
-  selectLoggedIn, //
-  (auth, loggedIn) => (loggedIn ? `Bearer ${auth.token}` : undefined)
+  selectLoggedIn,
+  (auth, loggedIn) => (auth && loggedIn ? `Bearer ${auth.token}` : undefined)
 );
-const selectEmailVerified = createSelector(
-  selectAuth, //
-  (auth) => auth.emailVerified
+const selectEmailVerified = createSelector(selectAuth, (auth) =>
+  Boolean(auth?.emailVerified)
+);
+const selectEmailAlertConfig = createSelector(
+  selectUser,
+  (user) => user?.extra.email_alerts
+);
+const selectAvailableUsers = createSelector(
+  selectAuthState,
+  selectUser,
+  (state, user) =>
+    Object.values(state.availableAuths)
+      .filter((x) => x.user.id !== user?.id && x.tokenExpiresAt > Date.now())
+      .sort((a, b) => b.tokenExpiresAt - a.tokenExpiresAt)
+      .map((x) => x.user)
 );
 
 export const Auth = {
@@ -84,8 +131,11 @@ export const Auth = {
     loggedIn: selectLoggedIn,
     user: selectUser,
     isAdmin: selectIsAdmin,
+    authToken: selectToken,
     isVerified: selectEmailVerified,
     authorization: selectAuthorization,
+    emailAlerts: selectEmailAlertConfig,
+    availableUsers: selectAvailableUsers,
   },
 };
 

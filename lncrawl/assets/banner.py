@@ -1,7 +1,7 @@
 import re
 from colorama.ansi import Fore, Style
 
-from .chars import Chars
+from .icons import Icons
 from .version import get_version
 
 banner_text = r"""
@@ -42,9 +42,9 @@ def get_color_banner():
     #' Lightnovel Crawler v' +
     version_text = Style.BRIGHT + "v" + get_version() + Style.RESET_ALL
     link_text = (
-        Chars.LINK
+        Icons.LINK
         + Fore.CYAN
-        + " https://github.com/dipu-bd/lightnovel-crawler"
+        + " https://github.com/lncrawl/lightnovel-crawler"
         + Fore.RESET
     )
     text = text.replace("<version>", Fore.RESET + version_text + Fore.YELLOW)

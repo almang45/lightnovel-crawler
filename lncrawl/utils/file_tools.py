@@ -1,0 +1,95 @@
+import logging
+import os
+import shlex
+import subprocess
+from pathlib import Path
+from typing import Union
+from slugify import slugify
+
+from .platforms import Platform
+
+logger = logging.getLogger(__name__)
+
+
+def format_size(num_bytes: int, decimals: int = 1, suffix: str = "B") -> str:
+    """
+    Convert a size in bytes into a human-readable string representing the size,
+    e.g. "117.7 MB" or "9.0 GB".
+
+    Units go up to zettabytes (ZB), then yottabytes (YB) as a fallback.
+    """
+    units = ["", "K", "M", "G", "T", "P", "E", "Z"]
+    size = float(num_bytes)
+    for unit in units:
+        if abs(size) < 1024.0:
+            return f"{size:.{decimals}f} {unit}{suffix}"
+        size /= 1024.0
+    return f"{size:.{decimals}f} Y{suffix}"
+
+
+def folder_size(folder: Union[str, Path]) -> int:
+    """
+    Return the total size of a folder in bytes.
+
+    Uses PowerShell on Windows or `du` on POSIX for speed.
+    Falls back to a Python directory walk if the system command fails.
+    Returns 0 if the folder does not exist or no files are readable.
+    """
+    try:
+        if Platform.windows:
+            cmd = [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"(Get-ChildItem -LiteralPath '{folder}' -Recurse -Force -File | Measure-Object Length -Sum).Sum",
+            ]
+            out = subprocess.check_output(cmd, text=True).strip()
+            return int(out) if out else 0
+        elif Platform.posix:
+            cmd = shlex.split(f'du -s -B1 "{folder}"')
+            out = subprocess.check_output(cmd, text=True).strip()
+            return int(out.split()[0]) if out else 0
+    except Exception:
+        logger.warning("System command failed, falling back to Python scan", exc_info=True)
+
+    # Python fallback
+    try:
+        return sum(
+            f.stat().st_size
+            for f in Path(folder).rglob("*")
+            if f.is_file()
+        )
+    except Exception:
+        logger.error("Failed to calculate folder size in Python fallback", exc_info=True)
+        return 0
+
+
+# Windows reserved device names
+_WINDOWS_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def safe_filename(name: str) -> str:
+    name = slugify(
+        name,
+        max_length=255,
+        separator=' ',
+        regex_pattern=r'[#<>:"/\\|?*\x00-\x1F]',
+    ).strip(" .") or "untitled"
+    if name.upper() in _WINDOWS_RESERVED:
+        name = f"_{name}"
+    return name or "untitled"
+
+
+def open_folder(folder_path: Union[str, Path]) -> None:
+    if Platform.windows:
+        os.system(f'explorer.exe "{folder_path}"')
+    elif Platform.wsl:
+        os.system(f'cd "{folder_path}" && explorer.exe .')
+    elif Platform.linux:
+        os.system(f'xdg-open "{folder_path}"')
+    elif Platform.mac:
+        os.system(f'open "{folder_path}"')

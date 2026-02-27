@@ -7,7 +7,7 @@ _novel
 .idea/
 .pyi/
 .telegram_bot_output/
-.venv/
+.venv*/
 .vscode
 *.egg-info
 *.log
@@ -33,3 +33,4 @@ save_pid.txt
 Test Novel
 windows/
 yarn.lock
+config.cfg

@@ -1,13 +1,10 @@
 import hashlib
 import logging
 from abc import abstractmethod
-from threading import Event
-from typing import Generator, List, Optional, Union
+from typing import List, Optional, Union
 
-from bs4 import Tag
-
+from ..context import ctx
 from ..models import Chapter, SearchResult, Volume
-from .arguments import get_args
 from .cleaner import TextCleaner
 from .scraper import Scraper
 
@@ -41,6 +38,13 @@ class Crawler(Scraper):
         - parser (Optional[str], optional): Desirable features of the parser. This can be the name of a specific parser
             ("lxml", "lxml-xml", "html.parser", or "html5lib") or it may be the type of markup to be used ("html", "html5", "xml").
         """
+        # Initialize superclass
+        super().__init__(
+            workers=workers,
+            parser=parser,
+        )
+
+        self.home_url = self.base_url[0]
         self.cleaner = TextCleaner()
 
         # Available in `search_novel` or `read_novel_info`
@@ -67,13 +71,6 @@ class Crawler(Scraper):
         # `url` - the link where to download the chapter
         self.chapters: List[Chapter] = []
 
-        # Initialize superclass
-        super().__init__(
-            origin=self.base_url[0],
-            workers=workers,
-            parser=parser,
-        )
-
     def close(self) -> None:
         # if hasattr(self, "volumes"):
         #     self.volumes.clear()
@@ -88,10 +85,7 @@ class Crawler(Scraper):
     def initialize(self) -> None:
         pass
 
-    def login(self, email: str, password: str) -> None:
-        pass
-
-    def logout(self) -> None:
+    def login(self, username_or_email: str, password_or_token: str) -> None:
         pass
 
     def search_novel(self, query: str) -> List[SearchResult]:
@@ -121,55 +115,26 @@ class Crawler(Scraper):
         return 0
 
     def extract_chapter_images(self, chapter: Chapter) -> None:
-        ignore_images = get_args().ignore_images
-        if ignore_images:
+        if ctx.config.crawler.ignore_images or not chapter.body:
             return
 
-        if not chapter.body:
-            return
-
-        has_changes = False
-        chapter.setdefault("images", {})
+        chapter.setdefault('images', {})
         soup = self.make_soup(chapter.body)
         for img in soup.select("img[src]"):
-            src_url = img.get("src")
-            assert isinstance(src_url, str)
-            full_url = self.absolute_url(src_url, page_url=chapter["url"])
+            src_url = img.get('src')
+            if not isinstance(src_url, str):
+                continue
+
+            full_url = self.absolute_url(src_url, page_url=chapter.url)
             if not full_url.startswith("http"):
                 continue
-            filename = hashlib.md5(full_url.encode()).hexdigest() + ".jpg"
-            img.attrs = {"src": "images/" + filename, "alt": filename}
-            chapter.images[filename] = full_url
-            has_changes = True
 
-        if has_changes:
+            id_text = str([self.home_url, chapter.url, full_url])
+            image_id = hashlib.md5(id_text.encode()).hexdigest()
+            img.attrs = {"src": f"images/{image_id}.jpg", "alt": image_id}
+            chapter.images[image_id] = full_url
+
+        if chapter.images:
             body = soup.find("body")
-            assert isinstance(body, Tag)
+            assert body
             chapter.body = body.decode_contents()
-
-    def download_chapters(
-        self,
-        chapters: List[Chapter],
-        fail_fast=False,
-        signal=Event(),
-    ) -> Generator[Chapter, None, None]:
-        def _downloader(chapter: Chapter):
-            chapter.body = ""
-            chapter.images = {}
-            chapter.body = self.download_chapter_body(chapter)
-            self.extract_chapter_images(chapter)
-            chapter.success = bool(chapter.body)
-            return chapter
-
-        futures = [
-            self.executor.submit(_downloader, chapter)
-            for chapter in chapters
-        ]
-
-        yield from self.resolve_as_generator(
-            futures,
-            desc="Chapters",
-            unit="item",
-            fail_fast=fail_fast,
-            signal=signal,
-        )

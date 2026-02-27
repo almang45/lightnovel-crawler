@@ -1,15 +1,7 @@
-import {
-  Button,
-  Col,
-  Divider,
-  Empty,
-  Flex,
-  Pagination,
-  Result,
-  Row,
-  Spin,
-  Typography,
-} from 'antd';
+import { AddToLibraryButton } from '@/components/Library/AddToLibraryButton';
+import { ErrorState } from '@/components/Loading/ErrorState';
+import { LoadingState } from '@/components/Loading/LoadingState';
+import { Col, Divider, Empty, Flex, Pagination, Row, Typography } from 'antd';
 import { useNovelList } from './hooks';
 import { NovelFilterBox } from './NovelFilterBox';
 import { NovelListItemCard } from './NovelListItemCard';
@@ -17,6 +9,7 @@ import { NovelListItemCard } from './NovelListItemCard';
 export const NovelListPage: React.FC<any> = () => {
   const {
     search: initialSearch,
+    domain: initialDomain,
     currentPage,
     perPage,
     error,
@@ -28,40 +21,50 @@ export const NovelListPage: React.FC<any> = () => {
   } = useNovelList();
 
   if (loading) {
-    return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Spin size="large" style={{ marginTop: 100 }} />
-      </Flex>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
     return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Result
-          status="error"
-          title="Failed to load novel list"
-          subTitle={error}
-          extra={[<Button onClick={refresh}>Retry</Button>]}
-        />
-      </Flex>
+      <ErrorState
+        error={error}
+        title="Failed to load novel list"
+        onRetry={refresh}
+      />
     );
   }
 
   return (
     <>
-      <Typography.Title level={2}>📚 Available Novels</Typography.Title>
+      <Typography.Title level={2}>📚 All Novels</Typography.Title>
 
       <Divider size="small" />
 
-      <NovelFilterBox search={initialSearch} updateParams={updateParams} />
+      <NovelFilterBox
+        search={initialSearch}
+        domain={initialDomain}
+        updateParams={updateParams}
+      />
 
       <Divider size="small" />
 
       <Row gutter={[16, 16]}>
         {novels.map((novel) => (
           <Col key={novel.id} xs={8} lg={6} xl={4}>
-            <NovelListItemCard novel={novel} />
+            <div style={{ position: 'relative' }}>
+              <div
+                style={{ position: 'absolute', right: 4, top: 4, zIndex: 2 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AddToLibraryButton
+                  novelId={novel.id}
+                  buttonText="Add"
+                  buttonType="primary"
+                  size="small"
+                />
+              </div>
+              <NovelListItemCard novel={novel} />
+            </div>
           </Col>
         ))}
       </Row>
@@ -72,16 +75,15 @@ export const NovelListPage: React.FC<any> = () => {
         </Flex>
       )}
 
-      {(novels.length > 0 || currentPage > 1) && total / perPage > 1 && (
-        <Pagination
-          current={currentPage}
-          total={total}
-          pageSize={perPage}
-          showSizeChanger={false}
-          onChange={(page) => updateParams({ page })}
-          style={{ textAlign: 'center', marginTop: 32 }}
-        />
-      )}
+      <Pagination
+        current={currentPage}
+        total={total}
+        pageSize={perPage}
+        showSizeChanger={false}
+        onChange={(page) => updateParams({ page })}
+        style={{ textAlign: 'center', marginTop: 32 }}
+        hideOnSinglePage
+      />
     </>
   );
 };

@@ -1,57 +1,37 @@
-import type { SupportedSource } from '@/types';
+import { store } from '@/store';
+import { Config } from '@/store/_config';
+import type { SourceItem } from '@/types';
 import { List } from 'antd';
-import { useMemo, useState } from 'react';
-import {
-  type SourceFilterState,
-  SupportedSourceFilter,
-} from './SupportedSourceFilter';
-import { SupportedSourceItem } from './SupportedSourceItem';
+import { useSelector } from 'react-redux';
+import { SupportedSourceCard } from './SupportedSourceCard';
 
 export const SupportedSourceList: React.FC<{
-  sources: SupportedSource[];
+  sources: SourceItem[];
   disabled?: boolean;
 }> = ({ sources, disabled }) => {
-  const [filtered, setFiltered] = useState(sources);
-
-  // Get unique language codes for the dropdown
-  const languages = useMemo(
-    () => Array.from(new Set(sources.map((x) => x.language))).sort(),
-    [sources]
-  );
-
-  // Filter logic
-  const applyFilter = (filter: SourceFilterState) => {
-    const filtered = sources.filter((src) => {
-      if (
-        filter.search &&
-        !src.domain.toLowerCase().includes(filter.search.toLowerCase())
-      ) {
-        return false;
-      }
-      if (filter.language && src.language !== filter.language) {
-        return false;
-      }
-      for (const feature of filter.features) {
-        if (!(src as any)[feature]) return false;
-      }
-      return true;
-    });
-    setFiltered(filtered);
+  const defaultPageSize = useSelector(Config.select.supportedSourcesPageSize);
+  const updatePageSize = (pageSize: number) => {
+    store.dispatch(Config.action.setSupportedSourcesPageSize(pageSize));
   };
-
   return (
-    <List
-      size="small"
-      dataSource={filtered}
-      grid={{ gutter: 5, column: 1 }}
-      header={
-        <SupportedSourceFilter onChange={applyFilter} languages={languages} />
-      }
-      renderItem={(source) => (
-        <List.Item style={{ margin: 0, marginTop: 5, padding: 0 }}>
-          <SupportedSourceItem source={source} disabled={disabled} />
-        </List.Item>
-      )}
-    />
+    <>
+      <List
+        size="small"
+        dataSource={sources}
+        grid={{ gutter: 5, column: 1 }}
+        renderItem={(source) => (
+          <List.Item style={{ margin: 0, marginTop: 5, padding: 0 }}>
+            <SupportedSourceCard source={source} disabled={disabled} />
+          </List.Item>
+        )}
+        pagination={{
+          defaultPageSize,
+          hideOnSinglePage: true,
+          showSizeChanger: true,
+          pageSizeOptions: [8, 12, 16, 25, 50, 100],
+          onChange: (_, pageSize) => updatePageSize(pageSize),
+        }}
+      />
+    </>
   );
 };

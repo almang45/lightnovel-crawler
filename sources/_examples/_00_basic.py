@@ -30,23 +30,19 @@ class MyCrawlerName(Crawler):
     # TODO: [OPTIONAL] This is called before all other methods.
     def initialize(self) -> None:
         # You can customize `TextCleaner` and other necessary things.
-        pass
+        super().initialize()
 
     # TODO: [OPTIONAL] This is called once per session before searching and fetching novel info.
     def login(self, username_or_email: str, password_or_token: str) -> None:
         # Examples:
-        # - https://github.com/dipu-bd/lightnovel-crawler/blob/master/sources/multi/mtlnovel.py
-        # - https://github.com/dipu-bd/lightnovel-crawler/blob/master/sources/multi/ranobes.py
-        pass
-
-    # TODO: [OPTIONAL] If it is necessary to logout after session is finished, you can implement this.
-    def logout(self):
+        # - https://github.com/lncrawl/lightnovel-crawler/blob/master/sources/multi/mtlnovel.py
+        # - https://github.com/lncrawl/lightnovel-crawler/blob/master/sources/multi/ranobes.py
         pass
 
     # TODO: [OPTIONAL] Return a list of search results using the query.
-    def search_novel(self, query) -> List[SearchResult]:
+    def search_novel(self, query: str) -> List[SearchResult]:
         # You may raise an Exception or return empty list in case of failure.
-        pass
+        raise NotImplementedError()
 
     # TODO: [REQUIRED] Reads the TOC contents from the self.novel_url
     def read_novel_info(self) -> None:
@@ -69,9 +65,9 @@ class MyCrawlerName(Crawler):
     def download_chapter_body(self, chapter: Chapter) -> str:
         # You can use `chapter['url']` to get the contents.
         # To keep it simple, check `self.cleaner.extract_contents`.
-        pass
+        raise NotImplementedError()
 
     # TODO: [OPTIONAL] Return the index in self.chapters which contains a chapter URL
     def index_of_chapter(self, url: str) -> int:
         # To get more help, check the default implemention in the `Crawler` class.
-        pass
+        return super().index_of_chapter(url)

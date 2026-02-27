@@ -1,63 +1,38 @@
-##
-# Setup Runner
-##
-FROM python:3.10-slim-bookworm AS runner
-
-# Install general dependencies
-RUN apt-get update -yq \
-    && apt-get install -yq \
-    wget tar xz-utils make cmake g++ libffi-dev libegl1 libopengl0 libxcb-cursor0 \
-    libnss3 libgl1-mesa-glx libxcomposite1 libxrandr2 libxi6 fontconfig \
-    libxkbcommon-x11-0 libxtst6 libxkbfile1 libxcomposite-dev libxdamage-dev \
-    && apt-get clean autoclean \
-    && apt-get autoremove -yq \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install calibre
-RUN wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sh /dev/stdin \
-    && ln -s /opt/calibre/ebook-convert /usr/local/bin/ebook-convert
-
-# Add app user
-RUN useradd -ms /bin/bash lncrawl
-USER lncrawl
-
-# Update pip
-RUN python -m pip install -U pip
+ARG BASE_IMAGE=ghcr.io/lncrawl/lncrawl-base:latest
 
 ##
-# Web assets builder
+# Web assets
 ##
-FROM node:alpine AS node
+FROM node:20-alpine AS web
 
 WORKDIR /app/lncrawl-web
-COPY lncrawl-web/package.json package.json
-COPY lncrawl-web/yarn.lock yarn.lock
-RUN yarn
 
-RUN mkdir -p ../lncrawl
+COPY lncrawl-web/package.json lncrawl-web/yarn.lock ./
+RUN yarn install --frozen-lockfile
+
 COPY lncrawl-web .
 RUN yarn build
 
 ##
 # Application
 ##
-FROM runner
+FROM ${BASE_IMAGE} AS app
 
 WORKDIR /app
 
-# Install requirements
-COPY --chown=lncrawl:lncrawl requirements.txt .
-RUN pip install -r requirements.txt
+# Install dependencies and project with uv
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
-# Copy sources
-COPY sources sources
-COPY lncrawl lncrawl
+# Copy files
+COPY LICENSE ./
+COPY README* ./
+COPY lncrawl ./lncrawl
+COPY sources ./sources
+COPY --from=web /app/lncrawl/server/web ./lncrawl/server/web
 
-# Copy web assets
-COPY --from=node --chown=lncrawl:lncrawl /app/lncrawl/bots/server/web lncrawl/bots/server/web
+# Custom data path
+ENV LNCRAWL_DATA_PATH=/data
 
-# Copy web assets
-ENV OUTPUT_PATH=/home/lncrawl/output
-RUN mkdir -p $OUTPUT_PATH
-
-ENTRYPOINT [ "python", "-m", "lncrawl" ]
+ENTRYPOINT ["uv", "run", "python", "-m", "lncrawl"]

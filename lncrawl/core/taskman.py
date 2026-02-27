@@ -1,22 +1,22 @@
+from __future__ import annotations
+
 import atexit
 import logging
-import os
 from abc import ABC
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from threading import Event, Semaphore, Thread
-from typing import Any, Dict, Generator, Iterable, List, Optional
+from typing import Callable, Generator, Iterable, List, Optional, Set, TypeVar
 
 from tqdm import tqdm
 
+from ..context import ctx
+from ..exceptions import LNException
 from ..utils.ratelimit import RateLimiter
-from .exeptions import LNException
 
-logger = logging.getLogger(__name__)
-
-MAX_REQUESTS_PER_DOMAIN = 5
+T = TypeVar('T')
 
 _resolver = Semaphore(1)
-_host_semaphores: Dict[str, Semaphore] = {}
+logger = logging.getLogger(__name__)
 
 
 class TaskManager(ABC):
@@ -24,6 +24,7 @@ class TaskManager(ABC):
         self,
         workers: Optional[int] = None,
         ratelimit: Optional[float] = None,
+        signal=Event(),
     ) -> None:
         """A helper class for task queueing and parallel task execution.
         It is being used as a superclass of the Crawler.
@@ -32,10 +33,9 @@ class TaskManager(ABC):
         - workers (int, optional): Number of concurrent workers to expect. Default: 5.
         - ratelimit (float, optional): Number of requests per second.
         """
+        self.signal = signal
+        self._futures: Set[Future] = set()
         self.init_executor(workers, ratelimit)
-
-    def close(self) -> None:
-        self.shutdown()
 
     @property
     def executor(self) -> ThreadPoolExecutor:
@@ -43,13 +43,17 @@ class TaskManager(ABC):
 
     @property
     def futures(self) -> List[Future]:
-        return self._futures
+        return list(self._futures)
 
     @property
     def workers(self):
         return self._executor._max_workers
 
+    def close(self) -> None:
+        self.shutdown()
+
     def shutdown(self, wait=False):
+        self.cancel_futures(self._futures)
         if hasattr(self, "_executor"):
             self._submit = None
             self._executor.shutdown(wait)
@@ -70,7 +74,11 @@ class TaskManager(ABC):
         - workers (int, optional): Number of concurrent workers to expect. Default: 5.
         - ratelimit (float, optional): Number of requests per second.
         """
-        self._futures: List[Future] = []
+        if not self.signal:
+            self.signal = Event()
+        if not self._futures:
+            self._futures = set()
+
         self.close()  # cleanup previous initialization
 
         if ratelimit and ratelimit > 0:
@@ -80,14 +88,14 @@ class TaskManager(ABC):
             del self._limiter
 
         self._executor = ThreadPoolExecutor(
-            max_workers=workers,
+            max_workers=workers or 1,
             thread_name_prefix="lncrawl_scraper",
         )
 
         self._submit = self._executor.submit
         setattr(self._executor, "submit", self.submit_task)
 
-    def submit_task(self, fn, *args, **kwargs) -> Future:
+    def submit_task(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
         """Submits a callable to be executed with the given arguments.
 
         Schedules the callable to be executed as fn(*args, **kwargs) and returns
@@ -96,23 +104,27 @@ class TaskManager(ABC):
         Returns:
             A Future representing the given call.
         """
-        if hasattr(self, "_limiter"):
-            fn = self._limiter.wrap(fn)
         if not self._submit:
             raise Exception("No executor is available")
-        future = self._submit(fn, *args, **kwargs)
-        self._futures.append(future)
-        return future
+
+        if hasattr(self, "_limiter"):
+            fn = self._limiter.wrap(fn)
+
+        f = self._submit(fn, *args, **kwargs)
+        self._futures.add(f)
+        f.add_done_callback(self._futures.remove)
+
+        return f
 
     @staticmethod
     def progress_bar(
-        iterable: Optional[Iterable] = None,
+        iterable: Optional[Iterable[T]] = None,
         unit: Optional[str] = None,
         desc: Optional[str] = None,
         total: Optional[float] = None,
         disable: bool = False,
     ) -> tqdm:
-        if os.getenv("debug_mode"):
+        if ctx.logger.is_info:
             disable = True
 
         if not disable:
@@ -141,26 +153,7 @@ class TaskManager(ABC):
         bar.close = extended_close  # type: ignore
         return bar
 
-    def domain_gate(self, hostname: Optional[str]):
-        """Limit number of entry per hostname.
-
-        Args:
-            hostname: A fully qualified url.
-
-        Returns:
-            A semaphore object to wait.
-
-        Example:
-            with self.domain_gate(url):
-                self.scraper.get(url)
-        """
-        if hostname is None:
-            hostname = ''
-        if hostname not in _host_semaphores:
-            _host_semaphores[hostname] = Semaphore(MAX_REQUESTS_PER_DOMAIN)
-        return _host_semaphores[hostname]
-
-    def cancel_futures(self, futures: Iterable[Future]) -> None:
+    def cancel_futures(self, futures: Iterable[Future[T]]) -> None:
         """Cancels all the future that are not yet done.
 
         Args:
@@ -174,27 +167,31 @@ class TaskManager(ABC):
 
     def resolve_as_generator(
         self,
-        futures: Iterable[Future],
+        futures: Iterable[Future[T]],
         disable_bar: bool = False,
         desc: Optional[str] = None,
         unit: Optional[str] = None,
         fail_fast: bool = False,
-        signal=Event(),
-    ) -> Generator[Any, None, None]:
+        signal: Optional[Event] = None,
+        timeout: Optional[float] = None,
+    ) -> Generator[Optional[T], None, None]:
         """Create a generator output to resolve the futures.
 
         Args:
             futures: A iterable list of futures to resolve.
-            timeout: The number of seconds to wait for the result of a future.
-                If None, then there is no limit on the wait time.
             disable_bar: Hides the progress bar if True.
             desc: The progress bar description
             unit: The progress unit name
             fail_fast: Fail on first error
+            signal: The abort signal
         """
         futures = list(futures)
         if not futures:
             return
+
+        if not signal:
+            signal = self.signal
+        assert signal
 
         bar = self.progress_bar(
             total=len(futures),
@@ -203,15 +200,15 @@ class TaskManager(ABC):
             disable=disable_bar,
         )
         try:
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout):
                 if signal.is_set():
                     return  # canceled
                 if fail_fast:
-                    yield future.result()
+                    yield future.result(timeout)
                     bar.update()
                     continue
                 try:
-                    yield future.result()
+                    yield future.result(timeout)
                 except KeyboardInterrupt:
                     signal.set()
                     raise
@@ -221,10 +218,7 @@ class TaskManager(ABC):
                 except Exception as e:
                     yield None
                     if bar.disable:
-                        logger.exception("Failure to resolve future")
-                    else:
-                        bar.clear()
-                        logger.warning(f"{type(e).__name__}: {e}")
+                        logger.info(f"Failure to resolve future. {repr(e)}")
                 finally:
                     bar.update()
         except KeyboardInterrupt:
@@ -240,23 +234,23 @@ class TaskManager(ABC):
 
     def resolve_futures(
         self,
-        futures: Iterable[Future],
+        futures: Iterable[Future[T]],
         disable_bar: bool = False,
         desc: Optional[str] = None,
         unit: Optional[str] = None,
         fail_fast: bool = False,
-        signal=Event(),
-    ) -> list:
+        signal: Optional[Event] = None,
+        timeout: Optional[float] = None,
+    ):
         """Wait for the futures to be done.
 
         Args:
             futures: A iterable list of futures to resolve.
-            timeout: The number of seconds to wait for the result of a future.
-                If None, then there is no limit on the wait time.
             disable_bar: Hides the progress bar if True.
             desc: The progress bar description
             unit: The progress unit name
             fail_fast: Fail on first error
+            signal: The abort signal
         """
 
         return list(
@@ -267,5 +261,36 @@ class TaskManager(ABC):
                 unit=unit,
                 fail_fast=fail_fast,
                 signal=signal,
+                timeout=timeout,
+            )
+        )
+
+    def as_completed(
+        self,
+        disable_bar: bool = False,
+        desc: Optional[str] = None,
+        unit: Optional[str] = None,
+        fail_fast: bool = False,
+        signal: Optional[Event] = None,
+        timeout: Optional[float] = None,
+    ):
+        """Wait for the futures in this task manager to be done.
+
+        Args:
+            disable_bar: Hides the progress bar if True.
+            desc: The progress bar description
+            unit: The progress unit name
+            fail_fast: Fail on first error
+            signal: The abort signal
+        """
+        return list(
+            self.resolve_as_generator(
+                futures=self._futures,
+                disable_bar=disable_bar,
+                desc=desc,
+                unit=unit,
+                fail_fast=fail_fast,
+                signal=signal,
+                timeout=timeout,
             )
         )

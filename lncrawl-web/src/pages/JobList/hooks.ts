@@ -1,21 +1,22 @@
-import { Auth } from '@/store/_auth';
-import { JobStatus, type Job, type PaginatiedResponse } from '@/types';
+import { JobType, type Job, type Paginated } from '@/types';
 import { stringifyError } from '@/utils/errors';
 import axios from 'axios';
 import { debounce } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
-import { JobStatusFilterParams } from './constants';
+import { JobStatusFilterParams, JobTypeFilterParams } from './constants';
 
 interface SearchParams {
   page?: number;
+  type?: JobType;
   status?: string;
 }
 
-export function useJobList(autoRefresh: boolean = true) {
-  const isAdmin = useSelector(Auth.select.isAdmin);
-  const currentUser = useSelector(Auth.select.user);
+export function useJobList(
+  autoRefresh: boolean = true,
+  customUserId?: string,
+  parentJobId?: string
+) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [refreshId, setRefreshId] = useState(0);
@@ -25,11 +26,20 @@ export function useJobList(autoRefresh: boolean = true) {
   const [total, setTotal] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
 
-  const perPage = 15;
+  const perPage = 10;
+
   const currentPage = useMemo(
     () => parseInt(searchParams.get('page') || '1', 10),
     [searchParams]
   );
+
+  const type: SearchParams['type'] = useMemo(() => {
+    const value = parseInt(searchParams.get('type') || '-1', 10);
+    if (Object.values(JobType).includes(value)) {
+      return value as JobType;
+    }
+  }, [searchParams]);
+
   const status: SearchParams['status'] = useMemo(() => {
     const param = searchParams.get('status')?.toLowerCase();
     for (const item of JobStatusFilterParams) {
@@ -39,63 +49,61 @@ export function useJobList(autoRefresh: boolean = true) {
     }
   }, [searchParams]);
 
-  const fetchJobs = async (
-    page: number,
-    limit: number,
-    userId?: string,
-    status?: SearchParams['status']
-  ) => {
-    setError(undefined);
-    try {
-      const offset = (page - 1) * limit;
-      const statusParams = JobStatusFilterParams.find(
-        (v) => v.value === status
-      )?.params;
-      const { data } = await axios.get<PaginatiedResponse<Job>>('/api/jobs', {
-        params: {
-          offset,
-          limit,
-          user_id: userId,
-          ...statusParams,
-        },
-      });
-      setTotal(data.total);
-      setJobs(data.items);
-    } catch (err: any) {
-      setError(stringifyError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const tid = setTimeout(() => {
-      const userId = isAdmin ? undefined : currentUser?.id;
-      fetchJobs(currentPage, perPage, userId, status);
-    }, 50);
+    const fetchJobs = async () => {
+      setError(undefined);
+      try {
+        const offset = (currentPage - 1) * perPage;
+        const statusParams = JobStatusFilterParams.find(
+          (v) => v.value === status
+        )?.params;
+        const { data } = await axios.get<Paginated<Job>>('/api/jobs', {
+          params: {
+            offset,
+            limit: perPage,
+            type,
+            user_id: customUserId,
+            parent_job_id: parentJobId,
+            ...statusParams,
+          },
+        });
+        setTotal(data.total);
+        setJobs(data.items);
+      } catch (err: any) {
+        setError(stringifyError(err));
+      } finally {
+        setLoading(false);
+      }
+    };
+    const tid = setTimeout(fetchJobs, 50);
     return () => clearTimeout(tid);
-  }, [currentUser?.id, isAdmin, currentPage, status, perPage, refreshId]);
+  }, [
+    parentJobId,
+    customUserId,
+    currentPage,
+    type,
+    status,
+    perPage,
+    refreshId,
+  ]);
 
   const hasIncompleteJobs = useMemo(() => {
     if (error) return false;
-    if (status && status !== JobStatus.PENDING) {
-      return false;
-    }
     for (const job of jobs) {
-      if (job.status != JobStatus.COMPLETED) {
+      if (!job.is_done) {
         return true;
       }
     }
     return false;
-  }, [error, status, jobs]);
+  }, [error, jobs]);
 
   useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = hasIncompleteJobs ? 5000 : 15000;
-    if (currentPage === 1) {
+    // refresh if it has incomplete jobs
+    // or auto refresh is on in the first page,
+    if (hasIncompleteJobs || (autoRefresh && currentPage === 1)) {
       const iid = setInterval(() => {
         setRefreshId((v) => v + 1);
-      }, interval);
+      }, 5000);
       return () => clearInterval(iid);
     }
   }, [autoRefresh, currentPage, hasIncompleteJobs]);
@@ -110,18 +118,33 @@ export function useJobList(autoRefresh: boolean = true) {
       setLoading(true);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        if (updates.page && updates.page !== 1) {
-          next.set('page', String(updates.page));
-        } else if (typeof updates.page !== 'undefined') {
-          next.delete('page');
+        if (typeof updates.page !== 'undefined') {
+          if (updates.page && updates.page !== 1) {
+            next.set('page', String(updates.page));
+          } else {
+            next.delete('page');
+          }
         }
-        if (
-          updates.status &&
-          JobStatusFilterParams.findIndex((v) => v.value === updates.status) > 0
-        ) {
-          next.set('status', updates.status);
-        } else if (typeof updates.status !== 'undefined') {
-          next.delete('status');
+        if (typeof updates.type !== 'undefined') {
+          if (
+            typeof updates.type === 'number' &&
+            updates.type !== JobTypeFilterParams[0].value
+          ) {
+            next.set('type', String(updates.type));
+          } else {
+            next.delete('type');
+          }
+        }
+        if (typeof updates.status !== 'undefined') {
+          if (
+            updates.status &&
+            updates.status !== JobStatusFilterParams[0].value &&
+            JobStatusFilterParams.find((v) => v.value === updates.status)
+          ) {
+            next.set('status', updates.status);
+          } else {
+            next.delete('status');
+          }
         }
         return next;
       });
@@ -129,6 +152,7 @@ export function useJobList(autoRefresh: boolean = true) {
   }, [setSearchParams]);
 
   return {
+    type,
     status,
     perPage,
     currentPage,

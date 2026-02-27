@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup, Tag
 
-from lncrawl.core.exeptions import LNException
+from lncrawl.exceptions import LNException
 from lncrawl.models import Chapter, SearchResult
 from lncrawl.templates.soup.chapter_only import ChapterOnlySoupTemplate
 from lncrawl.templates.soup.searchable import SearchableSoupTemplate
@@ -88,7 +88,7 @@ class NovelFullTemplate(SearchableSoupTemplate, ChapterOnlySoupTemplate):
 
     def select_chapter_body(self, soup: BeautifulSoup) -> Tag:
         contents = soup.select_one("#chr-content, #chapter-content")
-        assert contents
+        assert contents, 'No chapter contents'
         for ads in contents.select("div"):
             ads.extract()
         return contents

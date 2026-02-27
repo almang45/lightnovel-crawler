@@ -1,20 +1,9 @@
+import { SwitchUserButton } from '@/components/UserInfoCard/SwitchUserButton';
 import { store } from '@/store';
 import { Auth } from '@/store/_auth';
 import { stringifyError } from '@/utils/errors';
 import { LoginOutlined } from '@ant-design/icons';
-import {
-  Alert,
-  Avatar,
-  Button,
-  Card,
-  Divider,
-  Flex,
-  Form,
-  Input,
-  Layout,
-  Space,
-  Typography,
-} from 'antd';
+import { Alert, Button, Divider, Flex, Form, Input, Typography } from 'antd';
 import FormItem from 'antd/es/form/FormItem';
 import axios from 'axios';
 import { useState } from 'react';
@@ -29,7 +18,7 @@ export const LoginPage: React.FC<any> = () => {
     setError(undefined);
     try {
       const result = await axios.post(`/api/auth/login`, data);
-      store.dispatch(Auth.action.setAuth(result.data));
+      store.dispatch(Auth.action.login(result.data));
     } catch (err) {
       setError(stringifyError(err, 'Oops! Something went wrong.'));
     } finally {
@@ -38,99 +27,63 @@ export const LoginPage: React.FC<any> = () => {
   };
 
   return (
-    <Layout
-      style={{
-        padding: '10px',
-        overflow: 'auto',
-        height: 'calc(100vh - 40px)',
-      }}
+    <Form
+      form={form}
+      onFinish={handleLogin}
+      size="large"
+      layout="vertical"
+      labelCol={{ style: { padding: 0 } }}
     >
-      <Layout.Content style={{ overflow: 'auto' }}>
-        <Flex
-          align="center"
-          justify="center"
-          style={{ width: '100%', height: '100%' }}
-        >
-          <Card
-            title={
-              <Space
-                direction="vertical"
-                align="center"
-                style={{ padding: '15px', width: '100%' }}
-              >
-                <Avatar
-                  src="/lncrawl.svg"
-                  style={{ width: '96px', height: '96px' }}
-                />
-                <Typography.Title
-                  type="success"
-                  level={3}
-                  style={{ margin: 0 }}
-                >
-                  Lightnovel Crawler
-                </Typography.Title>
-              </Space>
-            }
-            style={{ width: '400px' }}
-          >
-            <Form
-              form={form}
-              onFinish={handleLogin}
-              size="large"
-              layout="vertical"
-              labelCol={{ style: { padding: 0 } }}
-            >
-              <Form.Item
-                name="email"
-                label="Email"
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="Enter email" autoComplete="current-user" />
-              </Form.Item>
-              <Form.Item
-                name={'password'}
-                label="Password"
-                rules={[{ required: true }]}
-              >
-                <Input.Password
-                  placeholder="Enter password"
-                  autoComplete="current-password"
-                />
-              </Form.Item>
+      <Form.Item name="email" label="Email" rules={[{ required: true }]}>
+        <Input placeholder="Enter email" autoComplete="current-user" />
+      </Form.Item>
 
-              {Boolean(error) && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message={error}
-                  closable
-                  onClose={() => setError('')}
-                />
-              )}
+      <Form.Item
+        name={'password'}
+        label="Password"
+        rules={[{ required: true }]}
+      >
+        <Input.Password
+          placeholder="Enter password"
+          autoComplete="current-password"
+        />
+      </Form.Item>
 
-              <FormItem style={{ marginTop: '20px' }}>
-                <Button
-                  block
-                  type="primary"
-                  htmlType="submit"
-                  loading={loading}
-                  disabled={loading}
-                  icon={<LoginOutlined />}
-                  children={'Login'}
-                />
-              </FormItem>
-            </Form>
+      <Flex justify="end">
+        <Typography.Link href="/forgot-password">
+          Forgot password?
+        </Typography.Link>
+      </Flex>
 
-            <Divider />
+      {Boolean(error) && (
+        <Alert
+          type="warning"
+          showIcon
+          message={error}
+          closable
+          onClose={() => setError('')}
+        />
+      )}
 
-            <Flex justify="center">
-              <Typography.Link href="/signup">
-                Create new account
-              </Typography.Link>
-            </Flex>
-          </Card>
-        </Flex>
-      </Layout.Content>
-    </Layout>
+      <FormItem style={{ marginTop: '20px' }}>
+        <Button
+          block
+          type="primary"
+          htmlType="submit"
+          loading={loading}
+          disabled={loading}
+          icon={<LoginOutlined />}
+          children={'Login'}
+        />
+      </FormItem>
+
+      <SwitchUserButton hideLoginSuggest />
+
+      <Divider />
+
+      <Flex justify="center">
+        <Typography.Link href="/signup">Create new account</Typography.Link>
+      </Flex>
+    </Form>
   );
 };

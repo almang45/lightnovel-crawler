@@ -1,16 +1,10 @@
-import {
-  Button,
-  Divider,
-  Flex,
-  Input,
-  List,
-  Pagination,
-  Result,
-  Spin,
-  Typography,
-} from 'antd';
+import { ErrorState } from '@/components/Loading/ErrorState';
+import { LoadingState } from '@/components/Loading/LoadingState';
+import { TeamOutlined } from '@ant-design/icons';
+import { Divider, Flex, Input, List, Pagination, Typography } from 'antd';
 import { useUserList } from './hooks';
 import { UserListItemCard } from './UserListItemCard';
+import { ReferrerCard } from '../UserDetails/ReferrerCard';
 
 export const UserListPage: React.FC<any> = () => {
   const {
@@ -21,34 +15,32 @@ export const UserListPage: React.FC<any> = () => {
     loading,
     total,
     users,
+    referrerId,
     refresh,
     updateParams,
   } = useUserList();
 
   if (loading) {
-    return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Spin size="large" style={{ marginTop: 100 }} />
-      </Flex>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
     return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Result
-          status="error"
-          title="Failed to load novel list"
-          subTitle={error}
-          extra={[<Button onClick={refresh}>Retry</Button>]}
-        />
-      </Flex>
+      <ErrorState
+        error={error}
+        title="Failed to load novel list"
+        onRetry={refresh}
+      />
     );
   }
 
   return (
     <>
-      <Typography.Title level={2}>👥 Users</Typography.Title>
+      <Typography.Title level={2}>
+        <TeamOutlined /> Users
+      </Typography.Title>
+
+      <ReferrerCard referrerId={referrerId} />
 
       <Divider size="small" />
 
@@ -64,6 +56,14 @@ export const UserListPage: React.FC<any> = () => {
 
       <Divider size="small" />
 
+      <Typography.Text
+        italic
+        type="secondary"
+        style={{ display: 'block', marginBottom: 5 }}
+      >
+        Found {total} users
+      </Typography.Text>
+
       <List
         itemLayout="horizontal"
         dataSource={users}
@@ -72,16 +72,15 @@ export const UserListPage: React.FC<any> = () => {
         )}
       />
 
-      {(users.length > 0 || currentPage > 1) && total / perPage > 1 && (
-        <Pagination
-          current={currentPage}
-          total={total}
-          pageSize={perPage}
-          showSizeChanger={false}
-          onChange={(page) => updateParams({ page })}
-          style={{ textAlign: 'center', marginTop: 32 }}
-        />
-      )}
+      <Pagination
+        current={currentPage}
+        total={total}
+        pageSize={perPage}
+        showSizeChanger={false}
+        onChange={(page) => updateParams({ page })}
+        style={{ textAlign: 'center', marginTop: 32 }}
+        hideOnSinglePage
+      />
     </>
   );
 };

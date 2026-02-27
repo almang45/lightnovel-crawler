@@ -1,21 +1,29 @@
-import {
-  JobPriorityTag,
-  JobStatusTag,
-  RunStateTag,
-} from '@/components/Tags/jobs';
-import { JobStatus, RunState, type Job } from '@/types';
+import { JobEtaTimeTag } from '@/components/Tags/JobEtaTimeTag';
+import { JobFailCountTag } from '@/components/Tags/JobFailCountTag';
+import { JobPriorityTag } from '@/components/Tags/JobPriorityTag';
+import { JobStatusTag } from '@/components/Tags/JobStatusTag';
+import { JobTypeTag } from '@/components/Tags/JobTypeTag';
+import type { Job } from '@/types';
 import { formatDate, formatDuration } from '@/utils/time';
-import {
-  ClockCircleFilled,
-  ClockCircleOutlined,
-  HourglassFilled,
-} from '@ant-design/icons';
-import { Alert, Card, Flex, Grid, Space, Tag, Typography } from 'antd';
-import { JobActionButtons } from '../JobList/JobActionButtons';
+import { ClockCircleFilled, ClockCircleOutlined } from '@ant-design/icons';
+import { Card, Flex, Grid, Tag, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import { JobActionButtons } from './JobActionButtons';
 import { JobProgressLine } from '../JobList/JobProgessBar';
+import { JobErrorDetailsCard } from './JobErrorDetailsCard';
 
-export const JobDetailsCard: React.FC<{ job: Job }> = ({ job }) => {
+export const JobDetailsCard: React.FC<{
+  job: Job;
+  hideActions?: boolean;
+}> = ({ job, hideActions }) => {
   const { lg } = Grid.useBreakpoint();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!job.is_running || !job.started_at) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [job.is_running, job.started_at]);
 
   return (
     <Card variant="outlined">
@@ -27,59 +35,52 @@ export const JobDetailsCard: React.FC<{ job: Job }> = ({ job }) => {
           fontFamily: "'Roboto Slab', serif",
         }}
       >
-        {job.url}
+        {job.job_title || `Request ${job.id}`}
       </Typography.Title>
 
       <Flex wrap align="center" gap={5}>
-        <JobStatusTag value={job.status} state={job.run_state} />
+        <JobTypeTag value={job.type} />
         <JobPriorityTag value={job.priority} />
-      </Flex>
-
-      <Space wrap style={{ marginTop: 20 }}>
-        <Typography.Text strong>Status:</Typography.Text>
-        <RunStateTag value={job.run_state} />
-      </Space>
-
-      <JobProgressLine job={job} size={['100%', 16]} style={{ marginTop: 8 }} />
-
-      <Flex wrap style={{ marginTop: 5 }}>
         <Tag icon={<ClockCircleOutlined />} color="default">
           <b>Requested:</b> {formatDate(job.created_at)}
         </Tag>
-        {[JobStatus.RUNNING, JobStatus.COMPLETED].includes(job.status) && (
+      </Flex>
+
+      <JobProgressLine job={job} size={['100%', 18]} style={{ marginTop: 8 }} />
+
+      <Flex wrap gap={4} style={{ marginTop: 5 }}>
+        <JobStatusTag job={job} />
+        <JobFailCountTag job={job} />
+        {!job.is_pending && (
           <Tag icon={<ClockCircleOutlined />} color="default">
             <b>Started:</b> {formatDate(job.started_at)}
           </Tag>
         )}
-        {job.status === JobStatus.RUNNING && (
+        {!!job.is_running && job.started_at && (
           <Tag icon={<ClockCircleOutlined spin />} color="default">
-            <b>Elapsed:</b> {formatDuration(Date.now() - job.started_at)}
+            <b>Elapsed:</b> {formatDuration(now - job.started_at)}
           </Tag>
         )}
-        {job.status === JobStatus.COMPLETED && (
+        <JobEtaTimeTag job={job} />
+        {!!job.is_done && (
           <Tag icon={<ClockCircleFilled />} color="default">
             <b>Completed:</b> {formatDate(job.finished_at)}
           </Tag>
         )}
-        {job.status === JobStatus.COMPLETED && (
-          <Tag icon={<HourglassFilled />} color="default">
-            <b>Runtime:</b> {formatDuration(job.finished_at - job.started_at)}
-          </Tag>
-        )}
       </Flex>
 
-      {Boolean(job.error) && (
-        <Alert
-          showIcon
-          description={job.error}
-          type={job.run_state === RunState.FAILED ? 'error' : 'warning'}
-          style={{ marginTop: 15, padding: '10px 20px' }}
-        />
+      <JobErrorDetailsCard job={job} />
+
+      {!hideActions && (
+        <Flex
+          justify="end"
+          align="center"
+          gap={'10px'}
+          style={{ marginTop: 15 }}
+        >
+          <JobActionButtons job={job} />
+        </Flex>
       )}
-
-      <Flex justify="end" align="center" gap={'10px'} style={{ marginTop: 15 }}>
-        <JobActionButtons job={job} />
-      </Flex>
     </Card>
   );
 };

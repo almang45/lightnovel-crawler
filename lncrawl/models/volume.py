@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict
 
 from box import Box
 
@@ -8,14 +8,13 @@ class Volume(Box):
         self,
         id: int,
         title: str = "",
-        start_chapter: Optional[int] = None,
-        final_chapter: Optional[int] = None,
-        chapter_count: Optional[int] = None,
+        chapter_count: int = 0,
+        extras: Dict[str, Any] = dict(),
         **kwargs,
     ) -> None:
         self.id = id
         self.title = title
-        self.start_chapter = start_chapter
-        self.final_chapter = final_chapter
         self.chapter_count = chapter_count
-        self.update(kwargs)
+        self.extra = extras
+        extras.update(kwargs)
+        self.update(extras)

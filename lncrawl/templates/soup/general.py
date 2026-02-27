@@ -1,17 +1,17 @@
 import logging
 from abc import abstractmethod
-from typing import Generator, Union, Optional
+from typing import Generator, Optional, Union
 
 from bs4 import BeautifulSoup, Tag
 
-from ...core.crawler import Crawler
-from ...core.exeptions import LNException
+from ...exceptions import LNException
 from ...models import Chapter, Volume
+from .._base import CrawlerTemplate
 
 logger = logging.getLogger(__name__)
 
 
-class GeneralSoupTemplate(Crawler):
+class GeneralSoupTemplate(CrawlerTemplate):
     def read_novel_info(self) -> None:
         soup = self.get_novel_soup()
 
@@ -82,10 +82,12 @@ class GeneralSoupTemplate(Crawler):
     def download_chapter_body(self, chapter: Chapter) -> str:
         soup = self.get_soup(chapter.url)
         body = self.select_chapter_body(soup)
+        if not body:
+            raise LNException('No chapter contents')
         return self.parse_chapter_body(body)
 
     @abstractmethod
-    def select_chapter_body(self, soup: BeautifulSoup) -> Tag:
+    def select_chapter_body(self, soup: BeautifulSoup) -> Optional[Tag]:
         """Select the tag containing the chapter text"""
         raise NotImplementedError()
 

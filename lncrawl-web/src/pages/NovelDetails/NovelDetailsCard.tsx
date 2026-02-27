@@ -1,13 +1,14 @@
+import FallbackImage from '@/assets/no-image.svg';
 import { API_BASE_URL } from '@/config';
-import { type Novel } from '@/types';
+import { Auth } from '@/store/_auth';
+import type { Novel } from '@/types';
+import { getGradientForId } from '@/utils/gradients';
 import { formatDate } from '@/utils/time';
 import { ExportOutlined } from '@ant-design/icons';
 import {
-  Avatar,
   Card,
   Descriptions,
   Divider,
-  Empty,
   Flex,
   Grid,
   Image,
@@ -16,38 +17,22 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import { Favicon } from '../../components/Favicon';
+import { NovelActionButtons } from './NovelActionButtons';
 
-export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
-  const location = useLocation();
+export const NovelDetailsCard: React.FC<{
+  novel: Novel;
+  showActions?: boolean;
+  withPageLink?: boolean;
+}> = ({ novel, showActions, withPageLink }) => {
   const { lg } = Grid.useBreakpoint();
 
+  const token = useSelector(Auth.select.authToken);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [showMore, setShowMore] = useState<boolean>(false);
-
-  if (!novel?.title) {
-    return (
-      <Card variant="outlined">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="Novel details is not available"
-        />
-      </Card>
-    );
-  }
-
-  const novelUrl = useMemo(() => new URL(novel.url), [novel.url]);
-
-  const faviconLink = useMemo(
-    () => novelUrl.origin + '/favicon.ico',
-    [novelUrl]
-  );
-
-  const domainName = useMemo(
-    () => novelUrl.hostname.replace('www.', ''),
-    [novelUrl]
-  );
 
   return (
     <Card
@@ -60,22 +45,22 @@ export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
       }}
       title={
         <Flex vertical>
-          <Space size="small" style={{ marginLeft: -5 }}>
-            <Avatar src={faviconLink} size={24} />
+          <Space size="small">
+            <Favicon url={novel.url} />
             <Typography.Text type="secondary" style={{ fontSize: '18px' }}>
-              {domainName}
+              {novel.domain}
             </Typography.Text>
           </Space>
           <Typography.Text style={{ fontSize: '24px', whiteSpace: 'wrap' }}>
-            {location.pathname === `/novel/${novel.id}` ? (
-              novel.title
-            ) : (
+            {withPageLink ? (
               <Link to={`/novel/${novel.id}`}>{novel.title}</Link>
+            ) : (
+              novel.title
             )}
           </Typography.Text>
         </Flex>
       }
-      extra={[
+      extra={
         <Tooltip title={'Original source'}>
           <Typography.Link
             href={novel.url}
@@ -85,21 +70,23 @@ export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
           >
             <ExportOutlined />
           </Typography.Link>
-        </Tooltip>,
-      ]}
+        </Tooltip>
+      }
     >
       <Flex gap="20px" vertical={!lg}>
         <Flex vertical align="center" justify="flex-start" gap="5px">
           <Image
             alt="Novel Cover"
-            src={`${API_BASE_URL}/api/novel/${novel.id}/cover`}
-            fallback="/no-image.svg"
+            src={`${API_BASE_URL}/static/${novel.cover_file}?token=${token}`}
+            fallback={FallbackImage}
             style={{
               display: 'block',
               objectFit: 'cover',
               borderRadius: 8,
               width: 'auto',
+              maxWidth: '225px',
               height: '300px',
+              background: getGradientForId(novel.id),
             }}
           />
         </Flex>
@@ -112,7 +99,7 @@ export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
             items={[
               {
                 label: 'Authors',
-                span: 2,
+                span: lg ? 2 : 1,
                 children: novel.authors,
               },
               {
@@ -135,22 +122,22 @@ export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
           />
 
           <Typography.Paragraph
-            type="secondary"
+            ellipsis={{ rows: showMore ? undefined : 5 }}
             style={{
-              textAlign: 'justify',
               overflow: 'hidden',
-              maxHeight: showMore ? undefined : '280px',
+              textAlign: 'justify',
+              whiteSpace: 'wrap',
             }}
             ref={(el) => {
               if (!el) return;
               setHasMore(Math.abs(el.scrollHeight - el.clientHeight) > 10);
             }}
           >
-            {novel.synopsis ? (
-              <span dangerouslySetInnerHTML={{ __html: novel.synopsis }} />
-            ) : (
-              'No synopsis available'
-            )}
+            <div
+              dangerouslySetInnerHTML={{
+                __html: novel.synopsis || '<p>No synopsis available</p>',
+              }}
+            />
           </Typography.Paragraph>
 
           {(hasMore || showMore) && (
@@ -166,14 +153,21 @@ export const NovelDetailsCard: React.FC<{ novel?: Novel }> = ({ novel }) => {
       </Flex>
 
       {novel.tags && Array.isArray(novel.tags) && novel.tags.length > 0 && (
-        <Flex wrap gap="5px" justify="center" style={{ width: '100%' }}>
+        <Flex wrap gap={5} justify="center" style={{ width: '100%' }}>
           <Divider size="small" />
           {novel.tags.map((tag) => (
-            <Tag key={tag} style={{ textTransform: 'capitalize', margin: 0 }}>
+            <Tag key={tag} style={{ textTransform: 'capitalize' }}>
               {tag.toLowerCase()}
             </Tag>
           ))}
         </Flex>
+      )}
+
+      {showActions && (
+        <>
+          <Divider size="small" />
+          <NovelActionButtons novel={novel} />
+        </>
       )}
     </Card>
   );

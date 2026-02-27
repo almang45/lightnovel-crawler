@@ -1,19 +1,26 @@
-import {
-  Button,
-  Divider,
-  Flex,
-  List,
-  Pagination,
-  Result,
-  Spin,
-  Typography,
-} from 'antd';
-import { JobListItemCard } from './JobListItemCard';
-import { RequestNovelCard } from './RequestNovelCard';
+import { ErrorState } from '@/components/Loading/ErrorState';
+import { LoadingState } from '@/components/Loading/LoadingState';
+import { Divider, Empty, List, Pagination } from 'antd';
+import type { JSX } from 'react';
 import { useJobList } from './hooks';
 import { JobFilterBox } from './JobFilterBox';
+import { JobListItemCard } from './JobListItemCard';
 
-export const JobListPage: React.FC<any> = () => {
+export const JobListPage: React.FC<{
+  title?: JSX.Element;
+  userId?: string;
+  parentJobId?: string;
+  disableFilters?: boolean;
+  autoRefresh?: boolean;
+  hideIfEmpty?: boolean;
+}> = ({
+  title,
+  userId,
+  hideIfEmpty,
+  autoRefresh,
+  parentJobId,
+  disableFilters,
+}) => {
   const {
     currentPage,
     error,
@@ -22,54 +29,69 @@ export const JobListPage: React.FC<any> = () => {
     total,
     jobs,
     status,
+    type,
     refresh,
     updateParams,
-  } = useJobList(true);
+  } = useJobList(autoRefresh, userId, parentJobId);
 
   if (loading) {
-    return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Spin size="large" style={{ marginTop: 100 }} />
-      </Flex>
-    );
+    return <LoadingState />;
+  }
+
+  if (
+    hideIfEmpty &&
+    !jobs?.length &&
+    status === undefined &&
+    type === undefined
+  ) {
+    return null;
   }
 
   if (error) {
     return (
-      <Flex align="center" justify="center" style={{ height: '100%' }}>
-        <Result
-          status="error"
-          title="Failed to load job list"
-          subTitle={error}
-          extra={[<Button onClick={refresh}>Retry</Button>]}
-        />
-      </Flex>
+      <ErrorState
+        error={error}
+        title="Failed to load job list"
+        onRetry={refresh}
+      />
     );
   }
 
   return (
     <>
-      <RequestNovelCard />
-      <Divider />
-      <Typography.Title level={2}>🛠 Job List</Typography.Title>
-      <Divider size="small" />
-      <JobFilterBox status={status} updateParams={updateParams} />
-      <Divider size="small" />
-      <List
-        itemLayout="horizontal"
-        dataSource={jobs}
-        renderItem={(job) => <JobListItemCard job={job} onChange={refresh} />}
-      />
-      {(jobs.length > 0 || currentPage > 1) && total / perPage > 1 && (
-        <Pagination
-          current={currentPage}
-          total={total}
-          pageSize={perPage}
-          showSizeChanger={false}
-          onChange={(page) => updateParams({ page })}
-          style={{ textAlign: 'center', marginTop: 32 }}
+      {title}
+      {title && <Divider size="small" />}
+      {!disableFilters && (
+        <>
+          <JobFilterBox
+            status={status}
+            type={type}
+            updateParams={updateParams}
+          />
+          <Divider size="small" />
+        </>
+      )}
+      {jobs.length > 0 ? (
+        <List
+          itemLayout="horizontal"
+          dataSource={jobs}
+          renderItem={(job) => <JobListItemCard job={job} onChange={refresh} />}
+        />
+      ) : (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="No available requests"
         />
       )}
+      <Pagination
+        current={currentPage}
+        total={total}
+        pageSize={perPage}
+        showSizeChanger={false}
+        onChange={(page) => updateParams({ page })}
+        style={{ textAlign: 'center', marginTop: 32 }}
+        hideOnSinglePage
+      />
     </>
   );
 };

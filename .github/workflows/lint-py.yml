@@ -1,0 +1,69 @@
+name: Lint & Test (Python)
+run-name: "Python CI${{ github.event_name == 'pull_request' && format(' - PR #{0}', github.event.pull_request.number) || format(' - {0}', github.ref_name) }}"
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+    paths:
+      - "lncrawl/**"
+      - "sources/**/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".flake8"
+      - ".github/workflows/lint-py.yml"
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - "lncrawl/**"
+      - "sources/**/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".flake8"
+      - ".github/workflows/lint-py.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lncrawl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    name: Python ${{ matrix.python-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: 📦 Install Dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: 🧹 Lint with flake8
+        run: uv run flake8 -v --count --show-source --statistics
+
+      - name: 🏗️ Build Wheel Package
+        run: uv run python -m build --wheel --no-isolation
+
+      - name: 🧪 Install lncrawl
+        run: uv pip install --system dist/lightnovel_crawler*.whl
+
+      - name: 🧪 Run lncrawl
+        run: lncrawl -ll sources list
